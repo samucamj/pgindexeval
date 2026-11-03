@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pgIndexEval - Avaliador de Indexacao</title>
+<style>
+  :root{
+    --azul:#2a4b7c; --azul2:#3a6ea5; --verde:#1b7f3b; --verde-bg:#e6f4ea;
+    --cinza:#5b6472; --borda:#d8dde5; --fundo:#f4f6f9; --texto:#1b2430;
+    --amarelo-bg:#fff6e0; --amarelo-bd:#e6c766;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Arial,sans-serif;color:var(--texto);
+       background:var(--fundo);font-size:15px;line-height:1.45}
+  header{background:var(--azul);color:#fff;padding:16px 24px}
+  header h1{margin:0;font-size:20px}
+  header p{margin:4px 0 0;opacity:.85;font-size:13px}
+  main{max-width:1000px;margin:0 auto;padding:20px 24px 60px}
+  .tabs{display:flex;gap:8px;margin:16px 0}
+  .tabs button{border:1px solid var(--borda);background:#fff;padding:8px 16px;
+       border-radius:8px 8px 0 0;cursor:pointer;font-size:14px}
+  .tabs button.ativo{background:var(--azul2);color:#fff;border-color:var(--azul2)}
+  .card{background:#fff;border:1px solid var(--borda);border-radius:10px;
+       padding:18px 20px;margin-bottom:18px}
+  .card h2{margin:0 0 12px;font-size:16px;color:var(--azul)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+  label{display:block;font-size:12px;color:var(--cinza);margin-bottom:4px}
+  input,select{width:100%;padding:8px;border:1px solid var(--borda);
+       border-radius:6px;font-size:14px;background:#fff}
+  .chks{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px}
+  .chks label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--texto)}
+  .chks input{width:auto}
+  button.acao{background:var(--verde);color:#fff;border:none;padding:10px 18px;
+       border-radius:8px;font-size:15px;cursor:pointer;margin-top:4px}
+  button.acao:disabled{background:#9bb0a3;cursor:not-allowed}
+  button.sec{background:#fff;color:var(--azul2);border:1px solid var(--azul2)}
+  .aviso{background:var(--amarelo-bg);border:1px solid var(--amarelo-bd);
+       border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+  th,td{border:1px solid var(--borda);padding:8px 10px;text-align:right}
+  th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+  thead th{background:#eef2f7;color:var(--azul)}
+  tr.melhor td{background:var(--verde-bg);font-weight:600}
+  .tag{display:inline-block;background:var(--verde);color:#fff;border-radius:12px;
+       padding:1px 9px;font-size:11px;margin-left:6px;vertical-align:middle}
+  .tag.ruim{background:#b23b3b}
+  .msg{font-size:13px;color:var(--cinza);margin-top:10px;white-space:pre-wrap}
+  .spin{display:none;font-size:13px;color:var(--azul2);margin-top:10px}
+  .oculto{display:none}
+  footer{font-size:12px;color:var(--cinza);text-align:center;padding:10px}
+  @media print{
+    header,.tabs,.card.controle,button,.spin{display:none!important}
+    body{background:#fff}
+    .card{border:none;padding:0}
+    main{max-width:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>pgIndexEval &mdash; Avaliador de Estrategias de Indexacao (PostgreSQL)</h1>
+  <p>Produto Tecnico-Tecnologico &middot; MGTI/UCB &middot; os resultados sao uma <b>sugestao</b> de apoio a decisao.</p>
+</header>
+
+<main>
+  <div class="tabs">
+    <button id="tab-aval" class="ativo" onclick="trocarAba('aval')">Avaliacao</button>
+    <button id="tab-sim" onclick="trocarAba('sim')">Simulacao de carga</button>
+  </div>
+
+  <!-- Conexao -->
+  <div class="card controle">
+    <h2>1. Conexao</h2>
+    <div class="grid">
+      <div><label>Host</label><input id="host" value="127.0.0.1"></div>
+      <div><label>Porta</label><input id="port" value="5432"></div>
+      <div><label>Usuario</label><input id="user" value="postgres"></div>
+      <div><label>Senha</label><input id="password" type="password" value="" placeholder="senha do PostgreSQL"></div>
+    </div>
+    <div style="margin-top:12px">
+      <button class="acao sec" onclick="conectar()">Conectar e listar bancos</button>
+      <span id="versao" class="msg"></span>
+    </div>
+  </div>
+
+  <!-- Selecao -->
+  <div class="card controle">
+    <h2>2. Base, tabela e coluna</h2>
+    <div class="grid">
+      <div><label>Banco de dados (versao do servidor acima)</label>
+        <select id="dbname" onchange="carregarTabelas()"><option>—</option></select></div>
+      <div><label>Tabela</label>
+        <select id="tabela" onchange="carregarColunas()"><option>—</option></select></div>
+      <div><label>Coluna com o texto</label>
+        <select id="coluna"><option>—</option></select></div>
+      <div><label>Termo de busca (exemplo)</label>
+        <input id="termo" value="habeas corpus"></div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Estrategias de indexacao a avaliar</label>
+      <div class="chks">
+        <label><input type="checkbox" class="estr" value="fts_gin" checked> FTS GIN</label>
+        <label><input type="checkbox" class="estr" value="fts_gist" checked> FTS GiST</label>
+        <label><input type="checkbox" class="estr" value="trgm_gin"> Trigrama GIN <span class="msg">(lento)</span></label>
+        <label><input type="checkbox" class="estr" value="trgm_gist"> Trigrama GiST</label>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <div><label>Repeticoes de construcao</label><input id="reps_build" value="1"></div>
+      <div><label>Repeticoes de consulta</label><input id="reps_consulta" value="5"></div>
+    </div>
+  </div>
+
+  <!-- Aba Avaliacao -->
+  <div id="aba-aval">
+    <div class="card controle">
+      <h2>3. Executar avaliacao</h2>
+      <div class="aviso">A ferramenta <b>cria e remove indices</b> (ciclo: criar &rarr; medir &rarr; relatorio &rarr; excluir e limpar). Use sempre uma <b>copia de testes</b>, nunca o banco de producao.</div>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="confirma" style="width:auto"> Confirmo que este e um banco de testes/copia.</label>
+      <button class="acao" id="btn-aval" onclick="avaliar()" style="margin-top:12px">Executar avaliacao</button>
+      <div class="spin" id="spin-aval">Executando no servidor... isso pode levar de segundos a minutos.</div>
+    </div>
+    <div class="card oculto" id="res-aval"></div>
+  </div>
+
+  <!-- Aba Simulacao -->
+  <div id="aba-sim" class="oculto">
+    <div class="card controle">
+      <h2>3. Simular aumento de carga</h2>
+      <div class="aviso">Cria uma tabela temporaria apenas com a coluna de texto, replicada pelo multiplicador, roda os cenarios e <b>projeta</b> o comportamento. A tabela temporaria e removida ao final. Rotulado como <b>simulacao</b>.</div>
+      <div class="grid">
+        <div><label>Multiplicador (crescimento)</label>
+          <select id="multiplicador"><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+        <div><label>Linhas-base (0 = todas)</label><input id="linhas_base" value="20000"></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="confirma-sim" style="width:auto"> Confirmo que este e um banco de testes/copia.</label>
+      <button class="acao" id="btn-sim" onclick="simular()" style="margin-top:12px">Executar simulacao</button>
+      <div class="spin" id="spin-sim">Preparando dados e executando...</div>
+    </div>
+    <div class="card oculto" id="res-sim"></div>
+  </div>
+
+  <div class="card controle" style="text-align:center">
+    <button class="acao sec" onclick="encerrar()" style="border-color:#b23b3b;color:#b23b3b">Encerrar aplicacao</button>
+    <div class="msg">Desliga o servidor local. Para abrir de novo, execute <b>run_web.bat</b>.</div>
+  </div>
+
+  <footer>pgIndexEval &middot; os valores dependem do ambiente de medicao e servem como <b>sugestao</b> de apoio a decisao.</footer>
+</main>
+
+<script>
+function $(id){return document.getElementById(id)}
+function conexao(){
+  return {host:$("host").value,port:$("port").value,user:$("user").value,
+          password:$("password").value,dbname:$("dbname").value};
+}
+function estrategias(){
+  return [...document.querySelectorAll(".estr:checked")].map(e=>e.value);
+}
+async function api(rota,params){
+  const r=await fetch(rota,{method:"POST",headers:{"Content-Type":"application/json"},
+       body:JSON.stringify(params)});
+  const j=await r.json();
+  if(j.erro) throw new Error(j.erro);
+  return j;
+}
+function trocarAba(qual){
+  $("tab-aval").classList.toggle("ativo",qual=="aval");
+  $("tab-sim").classList.toggle("ativo",qual=="sim");
+  $("aba-aval").classList.toggle("oculto",qual!="aval");
+  $("aba-sim").classList.toggle("oculto",qual!="sim");
+}
+async function conectar(){
+  $("versao").textContent="conectando...";
+  try{
+    const j=await api("/api/inspecionar",conexao());
+    $("versao").textContent=j.versao;
+    const sel=$("dbname"); sel.innerHTML="";
+    j.bancos.forEach(b=>{const o=document.createElement("option");o.value=o.textContent=b;sel.appendChild(o)});
+    const pref=j.bancos.find(b=>b.includes("ptt"))||j.bancos.find(b=>b.includes("mestrado"));
+    if(pref) sel.value=pref;
+    await carregarTabelas();
+  }catch(e){$("versao").textContent="ERRO: "+e.message;}
+}
+async function carregarTabelas(){
+  try{
+    const j=await api("/api/tabelas",conexao());
+    const sel=$("tabela"); sel.innerHTML="";
+    j.tabelas.forEach(t=>{const o=document.createElement("option");o.value=t.tabela;
+       o.textContent=`${t.tabela} (${t.linhas.toLocaleString("pt-BR")} linhas, ${t.tamanho})`;sel.appendChild(o)});
+    await carregarColunas();
+  }catch(e){alert("Tabelas: "+e.message);}
+}
+async function carregarColunas(){
+  try{
+    const p=conexao(); p.tabela=$("tabela").value;
+    const j=await api("/api/colunas",p);
+    const sel=$("coluna"); sel.innerHTML="";
+    j.colunas.forEach(c=>{const o=document.createElement("option");o.value=c.coluna;
+       o.textContent=c.coluna+(c.textual?" [texto]":" ("+c.tipo+")");o.dataset.txt=c.textual;sel.appendChild(o)});
+    const txt=[...sel.options].find(o=>o.dataset.txt=="true"); if(txt) sel.value=txt.value;
+  }catch(e){alert("Colunas: "+e.message);}
+}
+function parametros(){
+  const p=conexao();
+  p.tabela=$("tabela").value; p.coluna=$("coluna").value; p.termo=$("termo").value;
+  p.estrategias=estrategias();
+  p.repeticoes_build=$("reps_build").value; p.repeticoes_consulta=$("reps_consulta").value;
+  return p;
+}
+function fmt(v,suf){return v==null?"—":v.toLocaleString("pt-BR")+(suf||"")}
+function tabelaResultados(j){
+  const linhas=j.cenarios.map(c=>{
+    if(c.situacao!="viavel"){
+      return `<tr><td>${c.nome}<span class="tag ruim">inviavel</span></td><td>${c.busca}</td>
+        <td colspan="4" style="text-align:left">${c.erro||"nao foi possivel construir o indice"}</td></tr>`;
+    }
+    const tag=c.recomendado?'<span class="tag">recomendado</span>':'';
+    return `<tr class="${c.recomendado?'melhor':''}">
+      <td>${c.nome}${tag}</td><td>${c.busca}</td>
+      <td>${fmt(c.build_medio_s," s")}</td><td>${c.disco||"—"}</td>
+      <td>${fmt(c.consulta_media_ms," ms")}</td><td>${c.plano||"—"}</td></tr>`;
+  }).join("");
+  const rec=j.cenarios.find(c=>c.recomendado);
+  const titulo=j.simulacao
+    ? `Simulacao &mdash; ${j.tabela}.${j.coluna} (x${j.multiplicador} &rarr; ${j.linhas.toLocaleString("pt-BR")} linhas)`
+    : `Avaliacao &mdash; ${j.tabela}.${j.coluna} (${j.linhas.toLocaleString("pt-BR")} linhas)`;
+  const sugestao=rec
+    ? `<div class="aviso" style="background:var(--verde-bg);border-color:var(--verde)">
+         <b>Sugestao:</b> implementar <b>${rec.nome}</b> &mdash; menor tempo de consulta
+         (${fmt(rec.consulta_media_ms," ms")}), construcao ${fmt(rec.build_medio_s," s")}, disco ${rec.disco}.
+         Decisao final deve ponderar consulta, construcao e espaco em disco.</div>`
+    : `<div class="aviso">Nenhuma estrategia viavel para destacar.</div>`;
+  return `<h2>${titulo}</h2>
+    <div class="msg">Servidor: ${j.versao} &middot; termo: "${j.termo}" &middot; ${j.simulacao?"dados simulados":"dados reais"}</div>
+    ${sugestao}
+    <table><thead><tr><th>Estrategia</th><th>Busca</th><th>Construcao</th>
+      <th>Disco</th><th>Consulta</th><th>Plano</th></tr></thead><tbody>${linhas}</tbody></table>
+    <div class="msg">Verde = indice recomendado. Os valores dependem do ambiente e constituem uma <b>sugestao</b>.</div>
+    <button class="acao sec" onclick="baixarPdf()" style="margin-top:14px">Exportar relatorio em PDF</button>`;
+}
+async function avaliar(){
+  if(!$("confirma").checked){alert("Marque a confirmacao de banco de testes/copia.");return;}
+  if(estrategias().length==0){alert("Selecione ao menos uma estrategia.");return;}
+  $("btn-aval").disabled=true; $("spin-aval").style.display="block"; $("res-aval").classList.add("oculto");
+  try{
+    const j=await api("/api/avaliar",parametros());
+    window.ultimo=j;
+    $("res-aval").innerHTML=tabelaResultados(j); $("res-aval").classList.remove("oculto");
+  }catch(e){ $("res-aval").innerHTML='<div class="aviso">ERRO: '+e.message+'</div>'; $("res-aval").classList.remove("oculto"); }
+  finally{ $("btn-aval").disabled=false; $("spin-aval").style.display="none"; }
+}
+async function baixarPdf(){
+  if(!window.ultimo){alert("Execute uma avaliacao antes de exportar.");return;}
+  try{
+    const r=await fetch("/api/pdf",{method:"POST",headers:{"Content-Type":"application/json"},
+         body:JSON.stringify(window.ultimo)});
+    const ct=r.headers.get("Content-Type")||"";
+    if(!ct.includes("pdf")){const j=await r.json();throw new Error(j.erro||"falha no PDF");}
+    const blob=await r.blob(); const url=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url;
+    a.download="relatorio_pgindexeval.pdf"; document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }catch(e){alert("PDF: "+e.message);}
+}
+async function encerrar(){
+  if(!confirm("Encerrar a aplicacao? O servidor local sera desligado.")) return;
+  try{ await fetch("/api/encerrar",{method:"POST"}); }catch(e){}
+  document.body.innerHTML='<div style="padding:48px;font-family:Segoe UI,Arial,sans-serif;'+
+    'color:#1b2430"><h2>Aplicacao encerrada.</h2><p>O servidor local foi desligado. '+
+    'Pode fechar esta aba. Para abrir de novo, execute <b>run_web.bat</b>.</p></div>';
+}
+async function simular(){
+  if(!$("confirma-sim").checked){alert("Marque a confirmacao de banco de testes/copia.");return;}
+  if(estrategias().length==0){alert("Selecione ao menos uma estrategia.");return;}
+  $("btn-sim").disabled=true; $("spin-sim").style.display="block"; $("res-sim").classList.add("oculto");
+  try{
+    const p=parametros(); p.multiplicador=$("multiplicador").value; p.linhas_base=$("linhas_base").value;
+    const j=await api("/api/simular",p);
+    window.ultimo=j;
+    $("res-sim").innerHTML=tabelaResultados(j); $("res-sim").classList.remove("oculto");
+  }catch(e){ $("res-sim").innerHTML='<div class="aviso">ERRO: '+e.message+'</div>'; $("res-sim").classList.remove("oculto"); }
+  finally{ $("btn-sim").disabled=false; $("spin-sim").style.display="none"; }
+}
+</script>
+</body>
+</html>
