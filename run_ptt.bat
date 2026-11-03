@@ -13,7 +13,8 @@ REM ---- parametros de conexao (mesmos do psql_bd.bat) ----
 set "PGHOST=127.0.0.1"
 set "PGPORT=5432"
 set "PGUSER=postgres"
-set "PGPASSWORD=postgres"
+REM Defina a senha antes de usar, ex.:  set "PGPASSWORD=sua_senha"
+REM set "PGPASSWORD="
 
 REM ---- localiza o python ----
 set "PY=python"

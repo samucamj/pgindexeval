@@ -4,8 +4,8 @@
     "port": 5432,
     "dbname": "bd_mestrado_ptt",
     "user": "postgres",
-    "password": "postgres",
-    "comentario": "Subconjunto rapido (C1, C2, C5) para conferencia antes da execucao completa."
+    "password": "",
+    "comentario": "Subconjunto rapido (C1, C2, C5). Senha vazia: defina a variavel de ambiente PGPASSWORD."
   },
   "repeticoes_consulta": 10,
   "repeticoes_build": 3,

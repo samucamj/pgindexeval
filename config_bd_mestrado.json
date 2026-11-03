@@ -4,8 +4,8 @@
     "port": 5432,
     "dbname": "bd_mestrado_ptt",
     "user": "postgres",
-    "password": "postgres",
-    "comentario": "Copia de testes bd_mestrado_ptt. A ferramenta remove e recria indices; nao apontar para o banco original."
+    "password": "",
+    "comentario": "Copia de testes bd_mestrado_ptt. Senha vazia: defina a variavel de ambiente PGPASSWORD. A ferramenta remove e recria indices; nao apontar para o banco original."
   },
   "repeticoes_consulta": 10,
   "repeticoes_build": 3,

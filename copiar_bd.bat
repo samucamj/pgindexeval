@@ -23,7 +23,8 @@ if not defined PG_BIN (
 set "PGHOST=127.0.0.1"
 set "PGPORT=5432"
 set "PGUSER=postgres"
-set "PGPASSWORD=postgres"
+REM Defina a senha antes de usar, ex.:  set "PGPASSWORD=sua_senha"
+REM set "PGPASSWORD="
 
 echo Removendo copia anterior (se existir)...
 "%PG_BIN%\psql.exe" -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS bd_mestrado_ptt;"
