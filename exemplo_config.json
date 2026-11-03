@@ -1,0 +1,43 @@
+{
+  "conexao": {
+    "host": "localhost",
+    "port": 5432,
+    "dbname": "meu_banco",
+    "user": "postgres",
+    "password": "",
+    "comentario": "Deixe password vazio para usar a variavel de ambiente PGPASSWORD."
+  },
+  "repeticoes_consulta": 10,
+  "repeticoes_build": 3,
+  "descartar_aquecimento": 1,
+  "enable_seqscan": false,
+  "saida": "resultados",
+  "cenarios": [
+    {
+      "id": "C1",
+      "nome": "GIN sobre tsvector",
+      "busca": "FTS: termo",
+      "indices": [
+        {
+          "nome": "ex_idx_fts_gin",
+          "ddl": "CREATE INDEX ex_idx_fts_gin ON minha_tabela USING gin (busca_tsv)"
+        }
+      ],
+      "preparacao": [],
+      "consulta": "SELECT id FROM minha_tabela WHERE busca_tsv @@ to_tsquery('portuguese', 'termo') LIMIT 20"
+    },
+    {
+      "id": "C2",
+      "nome": "GiST sobre tsvector",
+      "busca": "FTS: termo",
+      "indices": [
+        {
+          "nome": "ex_idx_fts_gist",
+          "ddl": "CREATE INDEX ex_idx_fts_gist ON minha_tabela USING gist (busca_tsv)"
+        }
+      ],
+      "preparacao": [],
+      "consulta": "SELECT id FROM minha_tabela WHERE busca_tsv @@ to_tsquery('portuguese', 'termo') LIMIT 20"
+    }
+  ]
+}

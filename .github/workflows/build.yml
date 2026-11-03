@@ -1,0 +1,57 @@
+# Compila o pgIndexEval para Windows e macOS automaticamente.
+#
+# Como usar:
+#   1. Coloque o projeto pgindexeval em um repositorio GitHub.
+#      (Este arquivo deve ficar em .github/workflows/ na RAIZ do repositorio.
+#       Se o projeto nao estiver na raiz, ajuste 'working-directory' abaixo.)
+#   2. Faca push, ou rode manualmente em Actions -> build -> Run workflow.
+#   3. Baixe os artefatos "pgIndexEval-Windows" e "pgIndexEval-macOS".
+#
+# Observacao: o runner macOS da GitHub e Apple Silicon (arm64). Para um build
+# Intel (x86_64), adicione 'macos-13' a matriz.
+
+name: build
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: .   # ajuste se pgindexeval nao estiver na raiz do repo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: python -m pip install --upgrade pip pyinstaller "psycopg[binary]" numpy reportlab
+
+      - name: Compilar
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then SEP=';'; MODE='--onefile'; else SEP=':'; MODE='--windowed'; fi
+          python -m PyInstaller --noconfirm --clean $MODE --name pgIndexEval \
+            --add-data "web${SEP}web" \
+            --collect-all psycopg \
+            --collect-all reportlab \
+            pgindexeval_app.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pgIndexEval-${{ runner.os }}
+          path: dist/*

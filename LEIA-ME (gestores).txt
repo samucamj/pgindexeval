@@ -1,0 +1,43 @@
+===========================================================================
+ pgIndexEval - Avaliador de Estrategias de Indexacao em PostgreSQL
+ Produto Tecnico-Tecnologico - MGTI / Universidade Catolica de Brasilia
+===========================================================================
+
+O QUE E
+-------
+Ferramenta que mede e compara estrategias de indexacao (GIN, GiST, pg_trgm
+e IVFFlat) em uma base PostgreSQL, apontando - como SUGESTAO de apoio a
+decisao - o indice mais adequado para busca textual e semantica.
+
+COMO USAR (nao precisa instalar nada)
+-------------------------------------
+1. De dois cliques em  pgIndexEval.exe
+   - Abre o navegador na aplicacao (http://127.0.0.1:8765) e deixa uma
+     janela de console aberta (e o servidor; mantenha-a aberta durante o uso).
+   - Na primeira vez, o Windows pode exibir um aviso do "Windows protegeu
+     o seu PC" (SmartScreen), porque o arquivo nao e assinado digitalmente.
+     Clique em "Mais informacoes" e depois em "Executar assim mesmo".
+
+2. Na tela:
+   a) Informe a conexao (host, porta, usuario, senha) e clique
+      "Conectar e listar bancos".
+   b) Escolha o banco, a tabela e a coluna de texto.
+   c) Digite um termo de busca de exemplo e marque as estrategias.
+   d) Marque a confirmacao de que e um banco de TESTES/COPIA e clique
+      "Executar avaliacao".
+   - A aba "Simulacao de carga" projeta o comportamento com mais dados.
+   - "Exportar relatorio em PDF" gera o relatorio para arquivo.
+
+3. Para encerrar: botao "Encerrar aplicacao" na tela, OU feche a janela de
+   console, OU pressione Ctrl+C nela.
+
+IMPORTANTE
+----------
+- A ferramenta CRIA e REMOVE indices no banco indicado. Aponte-a sempre para
+  um banco de TESTES ou uma COPIA, nunca para o banco de producao.
+- Os resultados dependem do ambiente de medicao e constituem uma SUGESTAO.
+- Requisitos: Windows 64 bits e acesso de rede ao servidor PostgreSQL. Nao e
+  necessario ter o PostgreSQL instalado nesta maquina (o conector ja vem
+  embutido no executavel).
+
+===========================================================================

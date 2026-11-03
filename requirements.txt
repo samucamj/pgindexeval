@@ -1,0 +1,7 @@
+# Dependencias do pgIndexEval
+# Nucleo (obrigatorias):
+psycopg>=3.1        # driver nativo do PostgreSQL (conexao e EXPLAIN ANALYZE)
+numpy>=1.24         # tratamento estatistico (media, desvio amostral n-1)
+
+# Opcional: habilita a geracao do grafico em PNG, alem do SVG nativo.
+# matplotlib>=3.7

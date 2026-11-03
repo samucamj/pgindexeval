@@ -1,0 +1,84 @@
+{
+  "conexao": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "dbname": "bd_mestrado_ptt",
+    "user": "postgres",
+    "password": "postgres",
+    "comentario": "Copia de testes bd_mestrado_ptt. A ferramenta remove e recria indices; nao apontar para o banco original."
+  },
+  "repeticoes_consulta": 10,
+  "repeticoes_build": 3,
+  "descartar_aquecimento": 1,
+  "enable_seqscan": false,
+  "saida": "resultados",
+  "cenarios": [
+    {
+      "id": "C1",
+      "nome": "FTS GIN",
+      "busca": "FTS: habeas & corpus",
+      "indices": [
+        {
+          "nome": "idx_docstj_fts_gin",
+          "ddl": "CREATE INDEX idx_docstj_fts_gin ON documentos_stj USING gin (busca_tsv)"
+        }
+      ],
+      "preparacao": [],
+      "consulta": "SELECT codigo FROM documentos_stj WHERE busca_tsv @@ to_tsquery('portuguese', 'habeas & corpus') LIMIT 20"
+    },
+    {
+      "id": "C2",
+      "nome": "FTS GiST",
+      "busca": "FTS: habeas & corpus",
+      "indices": [
+        {
+          "nome": "idx_docstj_fts_gist",
+          "ddl": "CREATE INDEX idx_docstj_fts_gist ON documentos_stj USING gist (busca_tsv)"
+        }
+      ],
+      "preparacao": [],
+      "consulta": "SELECT codigo FROM documentos_stj WHERE busca_tsv @@ to_tsquery('portuguese', 'habeas & corpus') LIMIT 20"
+    },
+    {
+      "id": "C3",
+      "nome": "Trigrama GIN",
+      "busca": "ILIKE '%habeas corpus%'",
+      "indices": [
+        {
+          "nome": "idx_docstj_trgm_gin",
+          "ddl": "CREATE INDEX idx_docstj_trgm_gin ON documentos_stj USING gin (texto_completo gin_trgm_ops)"
+        }
+      ],
+      "preparacao": [],
+      "consulta": "SELECT codigo FROM documentos_stj WHERE texto_completo ILIKE '%habeas corpus%' LIMIT 20"
+    },
+    {
+      "id": "C4",
+      "nome": "Trigrama GiST",
+      "busca": "Trigramas GiST (texto_completo)",
+      "indices": [
+        {
+          "nome": "idx_docstj_trgm_gist",
+          "ddl": "CREATE INDEX idx_docstj_trgm_gist ON documentos_stj USING gist (texto_completo gist_trgm_ops)"
+        }
+      ],
+      "preparacao": [],
+      "consulta": "SELECT codigo FROM documentos_stj WHERE texto_completo ILIKE '%habeas corpus%' LIMIT 20"
+    },
+    {
+      "id": "C5",
+      "nome": "IVFFlat",
+      "busca": "Vizinhos vetoriais (cosseno)",
+      "indices": [
+        {
+          "nome": "idx_docstj_emb_ivfflat",
+          "ddl": "CREATE INDEX idx_docstj_emb_ivfflat ON documentos_stj USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
+        }
+      ],
+      "preparacao": [
+        "SET ivfflat.probes = 10"
+      ],
+      "consulta": "SELECT codigo FROM documentos_stj ORDER BY embedding <=> (SELECT embedding FROM documentos_stj WHERE embedding IS NOT NULL ORDER BY codigo LIMIT 1) LIMIT 20"
+    }
+  ]
+}

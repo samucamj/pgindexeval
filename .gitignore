@@ -1,0 +1,17 @@
+# Artefatos de build
+dist/
+build/
+build_pyi/
+*.spec
+*.exe
+*.zip
+*.app/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Resultados de execucao (nao versionar)
+resultados/
