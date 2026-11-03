@@ -15,3 +15,6 @@ venv/
 
 # Resultados de execucao (nao versionar)
 resultados/
+
+# Artefatos baixados do CI (binarios)
+artefatos/
