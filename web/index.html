@@ -143,6 +143,9 @@
         <input id="termo" value="habeas corpus"></div>
       <div><label>Coluna vetorial (embedding, p/ IVFFlat)</label>
         <select id="coluna_vetor"><option value="">— (sem vetor)</option></select></div>
+      <div><label>Coluna tsvector (FTS materializado)</label>
+        <select id="coluna_tsv"><option value="">— (recalcular a cada build)</option></select>
+        <div class="msg">Coluna gerada STORED: o FTS indexa o tsvector pronto (igual a dissertacao).</div></div>
     </div>
     <div style="margin-top:12px">
       <label>Estrategias de indexacao a avaliar</label>
@@ -255,12 +258,20 @@ async function carregarColunas(){
     const emb=j.colunas.find(c=>c.vetorial && /embed|vec/i.test(c.coluna))
            || j.colunas.find(c=>c.vetorial);
     if(emb) selv.value=emb.coluna;
+    // coluna tsvector materializada (FTS fiel a dissertacao)
+    const selt=$("coluna_tsv"); selt.innerHTML='<option value="">— (recalcular a cada build)</option>';
+    j.colunas.filter(c=>c.tsvector).forEach(c=>{const o=document.createElement("option");
+       o.value=c.coluna;o.textContent=c.coluna+" [tsvector]";selt.appendChild(o)});
+    const tsv=j.colunas.find(c=>c.tsvector && /tsv|busca|fts/i.test(c.coluna))
+           || j.colunas.find(c=>c.tsvector);
+    if(tsv) selt.value=tsv.coluna;
   }catch(e){alert("Colunas: "+e.message);}
 }
 function parametros(){
   const p=conexao();
   p.tabela=$("tabela").value; p.coluna=$("coluna").value; p.termo=$("termo").value;
   p.coluna_vetor=$("coluna_vetor").value;
+  p.coluna_tsv=$("coluna_tsv").value;
   p.estrategias=estrategias();
   p.repeticoes_build=$("reps_build").value; p.repeticoes_consulta=$("reps_consulta").value;
   return p;
@@ -283,6 +294,7 @@ function passosBloco(c){
   let et1=`<div class="etapa"><div class="et-num">1</div><div class="et-corpo">
     <div class="et-tit">Construcao do indice &mdash; ${cr.n||1}x (drop + create, tempo de parede)</div>
     <div class="et-desc">O indice e removido e recriado ${cr.n||1} vez(es); cada criacao e cronometrada.</div>
+    ${cr.sessao?`<pre class="sql">${sqlFmt(cr.sessao+";  -- ajuste de sessao, acelera o build")}</pre>`:""}
     <pre class="sql">${sqlFmt((cr.ddl||"")+";")}</pre>`;
   if(inviavel){
     et1+=`<div class="aviso" style="margin:0"><b>Inviavel:</b> ${esc(cr.erro||"o PostgreSQL recusou a criacao deste indice.")}

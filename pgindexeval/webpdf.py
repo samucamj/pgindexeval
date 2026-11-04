@@ -200,6 +200,8 @@ def gerar_pdf(j: dict[str, Any]) -> bytes:
             f"1. Construcao do indice &mdash; {cr.get('n', 1)}x (drop + create)", ettit))
         bloco.append(Paragraph(
             "O indice e removido e recriado; cada criacao e cronometrada.", etdesc))
+        if cr.get("sessao"):
+            bloco.append(_code(cr["sessao"] + ";"))
         bloco.append(_code((cr.get("ddl") or "") + ";"))
         bloco.append(_reps("Repeticao", cr.get("repeticoes_s", []), " s"))
         bloco.append(Paragraph(

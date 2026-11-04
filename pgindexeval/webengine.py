@@ -34,6 +34,12 @@ ESTRATEGIAS = {
 # Estrategias de texto (usam a coluna textual + termo); o IVFFlat e semantico
 # (usa uma coluna vetorial) e forma familia propria, sem ranking cruzado.
 ESTRATEGIAS_TEXTO = {"fts_gin", "fts_gist", "trgm_gin", "trgm_gist"}
+ESTRATEGIAS_FTS = {"fts_gin", "fts_gist"}
+
+# Memoria de manutencao da sessao de construcao dos indices. Reproduz o
+# protocolo da dissertacao (SET maintenance_work_mem = '512MB'), que acelera o
+# build; e um ajuste de sessao, aplicado apenas enquanto o experimento roda.
+MANUTENCAO_MEM = "512MB"
 
 
 # --------------------------------------------------------------------------- #
@@ -111,7 +117,7 @@ def listar_colunas(params: dict[str, Any]) -> dict[str, Any]:
     textuais = {"text", "character varying", "character", "citext"}
     colunas = [
         {"coluna": n, "tipo": t, "textual": t in textuais,
-         "vetorial": (u == "vector")}
+         "vetorial": (u == "vector"), "tsvector": (u == "tsvector")}
         for n, t, u in linhas
     ]
     if not colunas:
@@ -135,12 +141,19 @@ def _validar(params: dict[str, Any]) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 def construir_cenarios(
     tabela: str, coluna: str, termo: str, estrategias: list[str],
-    coluna_vetor: str | None = None,
+    coluna_vetor: str | None = None, coluna_tsv: str | None = None,
 ) -> list[config.Cenario]:
     t = _ident(tabela)
     c = _ident(coluna)
     termo_sql = _literal(termo)
-    expr_fts = f"to_tsvector('portuguese', coalesce({c}, ''))"
+    # FTS: se houver uma coluna tsvector materializada (coluna gerada STORED,
+    # como na dissertacao), indexa-se essa coluna diretamente -- o build nao
+    # recalcula to_tsvector e a comparacao GIN x GiST usa o MESMO tsvector.
+    # Sem ela, recai no indice funcional (recalcula o tsvector a cada build).
+    if coluna_tsv:
+        expr_fts = _ident(coluna_tsv)
+    else:
+        expr_fts = f"to_tsvector('portuguese', coalesce({c}, ''))"
     consulta_fts = (
         f"SELECT ctid FROM {t} "
         f"WHERE {expr_fts} @@ plainto_tsquery('portuguese', '{termo_sql}') LIMIT 20"
@@ -223,6 +236,7 @@ def _passos(res: ResultadoCenario, cen: config.Cenario,
         "nome_indice": ind.nome if ind else None,
         "ddl": (ind.ddl if ind else None),
         "drop_ddl": (f"DROP INDEX IF EXISTS {ind.nome}" if ind else None),
+        "sessao": f"SET maintenance_work_mem = '{MANUTENCAO_MEM}'",
         "n": cfg.repeticoes_build,
     }
     if res.viavel and res.indices:
@@ -320,6 +334,8 @@ def _executar(conexao: dict[str, Any], cenarios: list[config.Cenario],
     precisa_vector = any(c.id == "ivfflat" for c in cenarios)
     with db.Database(conexao) as database:
         versao = database.versao()
+        # Ajuste de sessao que acelera a construcao (igual a dissertacao).
+        database.executar(f"SET maintenance_work_mem = '{MANUTENCAO_MEM}'")
         if precisa_trgm:
             database.executar("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         if precisa_vector:
@@ -342,6 +358,7 @@ def avaliar(params: dict[str, Any]) -> dict[str, Any]:
     if usa_texto and not termo:
         raise ValueError("Informe um termo de busca de exemplo.")
 
+    cols: list[dict[str, Any]] | None = None
     coluna_vetor = (params.get("coluna_vetor") or "").strip() or None
     if "ivfflat" in estrategias:
         if not coluna_vetor:
@@ -352,6 +369,20 @@ def avaliar(params: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"A coluna '{coluna_vetor}' nao e do tipo vector em '{tabela}'.")
 
+    # FTS fiel a dissertacao: usa uma coluna tsvector materializada, se houver.
+    # Vem da interface (coluna_tsv) ou e autodetectada (primeira coluna tsvector).
+    coluna_tsv = (params.get("coluna_tsv") or "").strip() or None
+    if any(e in ESTRATEGIAS_FTS for e in estrategias):
+        if cols is None:
+            cols = listar_colunas(params)["colunas"]
+        tsv_cols = [c["coluna"] for c in cols if c["tsvector"]]
+        if coluna_tsv:
+            if coluna_tsv not in tsv_cols:
+                raise ValueError(
+                    f"A coluna '{coluna_tsv}' nao e do tipo tsvector em '{tabela}'.")
+        else:
+            coluna_tsv = tsv_cols[0] if tsv_cols else None
+
     reps_build = max(1, int(params.get("repeticoes_build", 1)))
     reps_consulta = max(2, int(params.get("repeticoes_consulta", 5)))
     conexao = _conexao(params)
@@ -359,11 +390,13 @@ def avaliar(params: dict[str, Any]) -> dict[str, Any]:
     with db.Database(conexao) as database:
         linhas = _contar_linhas(database, tabela)
 
-    cenarios = construir_cenarios(tabela, coluna, termo, estrategias, coluna_vetor)
+    cenarios = construir_cenarios(
+        tabela, coluna, termo, estrategias, coluna_vetor, coluna_tsv)
     dados, versao, recomendado = _executar(conexao, cenarios, reps_build, reps_consulta)
     return {
         "versao": versao, "banco": params.get("dbname"),
         "tabela": tabela, "coluna": coluna, "coluna_vetor": coluna_vetor,
+        "coluna_tsv": coluna_tsv,
         "termo": termo, "linhas": linhas,
         "cenarios": dados, "recomendado": recomendado, "simulacao": False,
     }
