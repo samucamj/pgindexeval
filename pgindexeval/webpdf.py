@@ -140,8 +140,10 @@ def gerar_pdf(j: dict[str, Any]) -> bytes:
             continue
         if c.get("recomendado"):
             idx_recomendado = i
+        _suf = (" (recomendado)" if c.get("recomendado")
+                else " (semantica)" if c.get("semantica") else "")
         dados.append([
-            Paragraph(c["nome"] + (" (recomendado)" if c.get("recomendado") else ""), celula),
+            Paragraph(c["nome"] + _suf, celula),
             Paragraph(c.get("busca", ""), celula),
             _fmt(c.get("build_medio_s"), " s"),
             c.get("disco") or "—",
@@ -179,7 +181,8 @@ def gerar_pdf(j: dict[str, Any]) -> bytes:
         p = c.get("passos", {}) or {}
         cr = p.get("criar", {}) or {}
         bloco: list[Any] = []
-        titulo = c["nome"] + (" (recomendado)" if c.get("recomendado") else "")
+        titulo = c["nome"] + (" (recomendado)" if c.get("recomendado")
+                              else " (semantica)" if c.get("semantica") else "")
         if c.get("situacao") != "viavel":
             bloco.append(Paragraph(f"{titulo} &mdash; inviavel", estrtit))
             if cr.get("ddl"):

@@ -45,6 +45,7 @@
   .tag{display:inline-block;background:var(--verde);color:#fff;border-radius:12px;
        padding:1px 9px;font-size:11px;margin-left:6px;vertical-align:middle}
   .tag.ruim{background:#b23b3b}
+  .tag.sem{background:#6a5acd}
   .msg{font-size:13px;color:var(--cinza);margin-top:10px;white-space:pre-wrap}
   .spin{display:none;font-size:13px;color:var(--azul2);margin-top:10px}
   .oculto{display:none}
@@ -140,6 +141,8 @@
         <select id="coluna"><option>—</option></select></div>
       <div><label>Termo de busca (exemplo)</label>
         <input id="termo" value="habeas corpus"></div>
+      <div><label>Coluna vetorial (embedding, p/ IVFFlat)</label>
+        <select id="coluna_vetor"><option value="">— (sem vetor)</option></select></div>
     </div>
     <div style="margin-top:12px">
       <label>Estrategias de indexacao a avaliar</label>
@@ -148,6 +151,7 @@
         <label><input type="checkbox" class="estr" value="fts_gist" checked> FTS GiST</label>
         <label><input type="checkbox" class="estr" value="trgm_gin"> Trigrama GIN <span class="msg">(lento)</span></label>
         <label><input type="checkbox" class="estr" value="trgm_gist"> Trigrama GiST</label>
+        <label><input type="checkbox" class="estr" value="ivfflat"> Vetorial IVFFlat <span class="msg">(semantica)</span></label>
       </div>
     </div>
     <div class="grid" style="margin-top:12px">
@@ -244,11 +248,19 @@ async function carregarColunas(){
     j.colunas.forEach(c=>{const o=document.createElement("option");o.value=c.coluna;
        o.textContent=c.coluna+(c.textual?" [texto]":" ("+c.tipo+")");o.dataset.txt=c.textual;sel.appendChild(o)});
     const txt=[...sel.options].find(o=>o.dataset.txt=="true"); if(txt) sel.value=txt.value;
+    // coluna vetorial (embedding) para o IVFFlat
+    const selv=$("coluna_vetor"); selv.innerHTML='<option value="">— (sem vetor)</option>';
+    j.colunas.filter(c=>c.vetorial).forEach(c=>{const o=document.createElement("option");
+       o.value=c.coluna;o.textContent=c.coluna+" [vetor]";selv.appendChild(o)});
+    const emb=j.colunas.find(c=>c.vetorial && /embed|vec/i.test(c.coluna))
+           || j.colunas.find(c=>c.vetorial);
+    if(emb) selv.value=emb.coluna;
   }catch(e){alert("Colunas: "+e.message);}
 }
 function parametros(){
   const p=conexao();
   p.tabela=$("tabela").value; p.coluna=$("coluna").value; p.termo=$("termo").value;
+  p.coluna_vetor=$("coluna_vetor").value;
   p.estrategias=estrategias();
   p.repeticoes_build=$("reps_build").value; p.repeticoes_consulta=$("reps_consulta").value;
   return p;
@@ -309,7 +321,8 @@ function passosBloco(c){
     <div class="et-desc">Ao final, o indice de teste e removido; nenhum objeto permanece na base.</div>
     <pre class="sql">${sqlFmt((cr.drop_ddl||"")+";")}</pre>
     </div></div>`;
-  const tag=c.recomendado?'<span class="tag">recomendado</span>':'';
+  const tag=c.recomendado?'<span class="tag">recomendado</span>'
+           :(c.semantica?'<span class="tag sem">semantica</span>':'');
   return `<details class="estr" open><summary class="${c.recomendado?'rec':''}">${c.nome} ${tag}</summary>
     <div class="etapas">${et1}${et2}${et3}${et4}</div></details>`;
 }
@@ -330,12 +343,16 @@ function tabelaResultados(j){
       return `<tr><td>${c.nome}<span class="tag ruim">inviavel</span></td><td>${c.busca}</td>
         <td colspan="4" style="text-align:left">${c.erro||"nao foi possivel construir o indice"}</td></tr>`;
     }
-    const tag=c.recomendado?'<span class="tag">recomendado</span>':'';
+    const tag=c.recomendado?'<span class="tag">recomendado</span>'
+             :(c.semantica?'<span class="tag sem">semantica</span>':'');
     return `<tr class="${c.recomendado?'melhor':''}">
       <td>${c.nome}${tag}</td><td>${c.busca}</td>
       <td>${fmt(c.build_medio_s," s")}</td><td>${c.disco||"—"}</td>
       <td>${fmt(c.consulta_media_ms," ms")}</td><td>${c.plano||"—"}</td></tr>`;
   }).join("");
+  const temSem=j.cenarios.some(c=>c.semantica && c.situacao=="viavel");
+  const notaSem=temSem?`<div class="msg">A linha <b>semantica</b> (IVFFlat / vetor) responde a outra
+     pergunta e <b>nao</b> e comparada com as de texto no destaque em verde.</div>`:"";
   const rec=j.cenarios.find(c=>c.recomendado);
   const titulo=j.simulacao
     ? `Simulacao &mdash; ${j.tabela}.${j.coluna} (x${j.multiplicador} &rarr; ${j.linhas.toLocaleString("pt-BR")} linhas)`
@@ -352,12 +369,15 @@ function tabelaResultados(j){
     <table><thead><tr><th>Estrategia</th><th>Busca</th><th>Construcao</th>
       <th>Disco</th><th>Consulta</th><th>Plano</th></tr></thead><tbody>${linhas}</tbody></table>
     <div class="msg">Verde = indice recomendado. Os valores dependem do ambiente e constituem uma <b>sugestao</b>.</div>
+    ${notaSem}
     ${passosSecao(j)}
     <button class="acao sec" onclick="baixarPdf()" style="margin-top:14px">Exportar relatorio em PDF</button>`;
 }
 async function avaliar(){
   if(!$("confirma").checked){alert("Marque a confirmacao de banco de testes/copia.");return;}
   if(estrategias().length==0){alert("Selecione ao menos uma estrategia.");return;}
+  if(estrategias().includes("ivfflat") && !$("coluna_vetor").value){
+    alert("Para a busca vetorial IVFFlat, selecione a coluna vetorial (embedding).");return;}
   $("btn-aval").disabled=true; $("spin-aval").style.display="block"; $("res-aval").classList.add("oculto");
   try{
     const j=await api("/api/avaliar",parametros());

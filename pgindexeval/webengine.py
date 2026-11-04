@@ -28,7 +28,12 @@ ESTRATEGIAS = {
     "fts_gist": {"nome": "FTS GiST", "busca": "Full-Text Search"},
     "trgm_gin": {"nome": "Trigrama GIN", "busca": "Similaridade (ILIKE)"},
     "trgm_gist": {"nome": "Trigrama GiST", "busca": "Similaridade (ILIKE)"},
+    "ivfflat": {"nome": "Vetorial IVFFlat", "busca": "Semantica (vetor)"},
 }
+
+# Estrategias de texto (usam a coluna textual + termo); o IVFFlat e semantico
+# (usa uma coluna vetorial) e forma familia propria, sem ranking cruzado.
+ESTRATEGIAS_TEXTO = {"fts_gin", "fts_gist", "trgm_gin", "trgm_gist"}
 
 
 # --------------------------------------------------------------------------- #
@@ -96,7 +101,8 @@ def listar_colunas(params: dict[str, Any]) -> dict[str, Any]:
         assert database.conn is not None
         with database.conn.cursor() as cur:
             cur.execute(
-                "SELECT column_name, data_type FROM information_schema.columns "
+                "SELECT column_name, data_type, udt_name "
+                "FROM information_schema.columns "
                 "WHERE table_schema = 'public' AND table_name = %s "
                 "ORDER BY ordinal_position",
                 (tabela,),
@@ -104,7 +110,9 @@ def listar_colunas(params: dict[str, Any]) -> dict[str, Any]:
             linhas = cur.fetchall()
     textuais = {"text", "character varying", "character", "citext"}
     colunas = [
-        {"coluna": n, "tipo": t, "textual": t in textuais} for n, t in linhas
+        {"coluna": n, "tipo": t, "textual": t in textuais,
+         "vetorial": (u == "vector")}
+        for n, t, u in linhas
     ]
     if not colunas:
         raise ValueError(f"Tabela '{tabela}' nao encontrada no schema public.")
@@ -126,7 +134,8 @@ def _validar(params: dict[str, Any]) -> tuple[str, str]:
 # Construcao dos cenarios para a tabela/coluna escolhidas
 # --------------------------------------------------------------------------- #
 def construir_cenarios(
-    tabela: str, coluna: str, termo: str, estrategias: list[str]
+    tabela: str, coluna: str, termo: str, estrategias: list[str],
+    coluna_vetor: str | None = None,
 ) -> list[config.Cenario]:
     t = _ident(tabela)
     c = _ident(coluna)
@@ -161,6 +170,23 @@ def construir_cenarios(
                      f"CREATE INDEX pie_eval_trgm_gist ON {t} USING gist ({c} gist_trgm_ops)")],
             consulta=consulta_ilike),
     }
+    if coluna_vetor:
+        v = _ident(coluna_vetor)
+        # vetor de referencia tirado da propria tabela (como no cenario C5)
+        consulta_vec = (
+            f"SELECT ctid FROM {t} WHERE {v} IS NOT NULL "
+            f"ORDER BY {v} <=> ("
+            f"SELECT {v} FROM {t} WHERE {v} IS NOT NULL ORDER BY ctid LIMIT 1"
+            f") LIMIT 20"
+        )
+        defs["ivfflat"] = config.Cenario(
+            id="ivfflat", nome="Vetorial IVFFlat", busca="Semantica (vetor)",
+            indices=[config.Indice(
+                "pie_eval_ivfflat",
+                f"CREATE INDEX pie_eval_ivfflat ON {t} "
+                f"USING ivfflat ({v} vector_cosine_ops) WITH (lists = 100)")],
+            consulta=consulta_vec,
+            preparacao=["SET ivfflat.probes = 10"])
     return [defs[e] for e in estrategias if e in defs]
 
 
@@ -242,7 +268,7 @@ def _serializar(res: ResultadoCenario, cen: config.Cenario,
     d: dict[str, Any] = {
         "id": res.id, "nome": res.nome, "busca": res.busca,
         "situacao": res.situacao, "erro": res.erro, "plano": res.plano,
-        "recomendado": False,
+        "recomendado": False, "semantica": res.id == "ivfflat",
     }
     b = res.build_resumo() if res.viavel else None
     q = res.consulta_resumo() if res.viavel else None
@@ -257,12 +283,19 @@ def _serializar(res: ResultadoCenario, cen: config.Cenario,
 
 
 def _marcar_recomendado(cenarios: list[dict[str, Any]]) -> str | None:
-    """Marca em verde o de menor tempo de consulta entre os viaveis."""
+    """Marca em verde o de menor tempo de consulta entre os viaveis.
+
+    A busca vetorial (semantica) responde a outra pergunta e nao e comparada
+    com as estrategias de texto: fica de fora do ranking. So e marcada se for a
+    unica familia viavel escolhida.
+    """
     viaveis = [c for c in cenarios if c["situacao"] == "viavel"
                and c["consulta_media_ms"] is not None]
     if not viaveis:
         return None
-    melhor = min(viaveis, key=lambda c: c["consulta_media_ms"])
+    texto = [c for c in viaveis if not c.get("semantica")]
+    pool = texto or viaveis
+    melhor = min(pool, key=lambda c: c["consulta_media_ms"])
     melhor["recomendado"] = True
     return melhor["id"]
 
@@ -284,10 +317,13 @@ def _executar(conexao: dict[str, Any], cenarios: list[config.Cenario],
     )
     resultados: list[ResultadoCenario] = []
     precisa_trgm = any(c.id.startswith("trgm") for c in cenarios)
+    precisa_vector = any(c.id == "ivfflat" for c in cenarios)
     with db.Database(conexao) as database:
         versao = database.versao()
         if precisa_trgm:
             database.executar("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        if precisa_vector:
+            database.executar("CREATE EXTENSION IF NOT EXISTS vector")
         todos = [i.nome for c in cenarios for i in c.indices]
         for cen in cenarios:
             scenarios.limpar(database, todos)
@@ -300,10 +336,22 @@ def _executar(conexao: dict[str, Any], cenarios: list[config.Cenario],
 
 def avaliar(params: dict[str, Any]) -> dict[str, Any]:
     tabela, coluna = _validar(params)
-    termo = params.get("termo", "").strip()
-    if not termo:
-        raise ValueError("Informe um termo de busca de exemplo.")
     estrategias = params.get("estrategias") or ["fts_gin", "fts_gist"]
+    termo = params.get("termo", "").strip()
+    usa_texto = any(e in ESTRATEGIAS_TEXTO for e in estrategias)
+    if usa_texto and not termo:
+        raise ValueError("Informe um termo de busca de exemplo.")
+
+    coluna_vetor = (params.get("coluna_vetor") or "").strip() or None
+    if "ivfflat" in estrategias:
+        if not coluna_vetor:
+            raise ValueError(
+                "Selecione a coluna vetorial (embedding) para a busca IVFFlat.")
+        cols = listar_colunas(params)["colunas"]
+        if coluna_vetor not in {c["coluna"] for c in cols if c["vetorial"]}:
+            raise ValueError(
+                f"A coluna '{coluna_vetor}' nao e do tipo vector em '{tabela}'.")
+
     reps_build = max(1, int(params.get("repeticoes_build", 1)))
     reps_consulta = max(2, int(params.get("repeticoes_consulta", 5)))
     conexao = _conexao(params)
@@ -311,11 +359,12 @@ def avaliar(params: dict[str, Any]) -> dict[str, Any]:
     with db.Database(conexao) as database:
         linhas = _contar_linhas(database, tabela)
 
-    cenarios = construir_cenarios(tabela, coluna, termo, estrategias)
+    cenarios = construir_cenarios(tabela, coluna, termo, estrategias, coluna_vetor)
     dados, versao, recomendado = _executar(conexao, cenarios, reps_build, reps_consulta)
     return {
         "versao": versao, "banco": params.get("dbname"),
-        "tabela": tabela, "coluna": coluna, "termo": termo, "linhas": linhas,
+        "tabela": tabela, "coluna": coluna, "coluna_vetor": coluna_vetor,
+        "termo": termo, "linhas": linhas,
         "cenarios": dados, "recomendado": recomendado, "simulacao": False,
     }
 
@@ -333,7 +382,13 @@ def simular(params: dict[str, Any]) -> dict[str, Any]:
     """
     tabela, coluna = _validar(params)
     termo = params.get("termo", "").strip() or "exemplo"
-    estrategias = params.get("estrategias") or ["fts_gin", "fts_gist"]
+    estrategias = [e for e in (params.get("estrategias") or ["fts_gin", "fts_gist"])
+                   if e in ESTRATEGIAS_TEXTO]
+    if not estrategias:
+        raise ValueError(
+            "A simulacao de carga projeta apenas a busca textual (replica a coluna "
+            "de texto). Selecione ao menos uma estrategia de texto; a busca vetorial "
+            "IVFFlat nao entra na simulacao.")
     multiplicador = max(1, min(int(params.get("multiplicador", 2)), 5))
     base = int(params.get("linhas_base", 0))  # 0 = todas as linhas
     reps_build = max(1, int(params.get("repeticoes_build", 1)))
