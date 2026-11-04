@@ -185,7 +185,60 @@ def _rodar_cenario(database: db.Database, cfg: config.Config,
     return res
 
 
-def _serializar(res: ResultadoCenario) -> dict[str, Any]:
+def _passos(res: ResultadoCenario, cen: config.Cenario,
+            cfg: config.Config) -> dict[str, Any]:
+    """Monta o detalhamento didatico (passo a passo) de um cenario.
+
+    Expoe, para a interface, os scripts executados e as medicoes individuais de
+    cada repeticao, para que o gestor veja o processo, e nao apenas o resumo.
+    """
+    ind = cen.indices[0] if cen.indices else None
+    criar: dict[str, Any] = {
+        "nome_indice": ind.nome if ind else None,
+        "ddl": (ind.ddl if ind else None),
+        "drop_ddl": (f"DROP INDEX IF EXISTS {ind.nome}" if ind else None),
+        "n": cfg.repeticoes_build,
+    }
+    if res.viavel and res.indices:
+        b = res.build_resumo()
+        criar["repeticoes_s"] = [round(t, 3) for t in res.indices[0].tempos]
+        criar["media_s"] = round(b.media, 3) if b else None
+        criar["desvio_s"] = round(b.desvio, 3) if b else None
+    else:
+        criar["erro"] = res.erro
+
+    passos: dict[str, Any] = {"criar": criar}
+
+    if res.viavel and res.indices:
+        nome = res.indices[0].nome
+        bytes_ = res.tamanho_total()
+        passos["catalogo"] = {
+            "sql": f"SELECT pg_relation_size('{nome}') AS bytes;",
+            "sql_legivel": f"SELECT pg_size_pretty(pg_relation_size('{nome}'));",
+            "bytes": bytes_,
+            "legivel": db.pretty_bytes(bytes_),
+        }
+        prep = ["RESET ALL"]
+        if not cfg.enable_seqscan:
+            prep.append("SET enable_seqscan = off")
+        prep += list(cen.preparacao)
+        q = res.consulta_resumo()
+        passos["consulta"] = {
+            "preparacao": prep,
+            "consulta_sql": cen.consulta,
+            "explain": f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)\n{cen.consulta}",
+            "aquecimento": cfg.descartar_aquecimento,
+            "n": cfg.repeticoes_consulta,
+            "repeticoes_ms": [round(t, 3) for t in res.consulta_tempos],
+            "media_ms": round(q.media, 3) if q else None,
+            "desvio_ms": round(q.desvio, 3) if q else None,
+            "plano": res.plano,
+        }
+    return passos
+
+
+def _serializar(res: ResultadoCenario, cen: config.Cenario,
+                cfg: config.Config) -> dict[str, Any]:
     d: dict[str, Any] = {
         "id": res.id, "nome": res.nome, "busca": res.busca,
         "situacao": res.situacao, "erro": res.erro, "plano": res.plano,
@@ -199,6 +252,7 @@ def _serializar(res: ResultadoCenario) -> dict[str, Any]:
     d["disco"] = db.pretty_bytes(res.tamanho_total()) if res.viavel else None
     d["consulta_media_ms"] = round(q.media, 3) if q else None
     d["consulta_desvio_ms"] = round(q.desvio, 3) if q else None
+    d["passos"] = _passos(res, cen, cfg)
     return d
 
 
@@ -239,7 +293,7 @@ def _executar(conexao: dict[str, Any], cenarios: list[config.Cenario],
             scenarios.limpar(database, todos)
             resultados.append(_rodar_cenario(database, cfg, cen))
         scenarios.limpar(database, todos)
-    dados = [_serializar(r) for r in resultados]
+    dados = [_serializar(r, cen, cfg) for r, cen in zip(resultados, cenarios)]
     recomendado = _marcar_recomendado(dados)
     return dados, versao, recomendado
 

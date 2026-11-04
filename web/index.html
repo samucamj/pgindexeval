@@ -49,11 +49,55 @@
   .spin{display:none;font-size:13px;color:var(--azul2);margin-top:10px}
   .oculto{display:none}
   footer{font-size:12px;color:var(--cinza);text-align:center;padding:10px}
+
+  /* --- passo a passo didatico --- */
+  h3.secao{margin:22px 0 4px;font-size:15px;color:var(--azul)}
+  .legenda{font-size:13px;color:var(--cinza);margin:0 0 12px}
+  .como{background:#eef2f7;border:1px solid var(--borda);border-radius:8px;
+       padding:10px 14px;font-size:13px;margin-bottom:14px}
+  .como b{color:var(--azul)}
+  details.estr{border:1px solid var(--borda);border-radius:10px;margin-bottom:14px;
+       background:#fff;overflow:hidden}
+  details.estr>summary{cursor:pointer;list-style:none;padding:12px 16px;
+       font-size:15px;font-weight:600;color:var(--azul);background:#f7f9fc;
+       border-bottom:1px solid var(--borda);display:flex;align-items:center;gap:8px}
+  details.estr>summary::-webkit-details-marker{display:none}
+  details.estr>summary::before{content:"\25B8";color:var(--azul2);font-size:12px}
+  details.estr[open]>summary::before{content:"\25BE"}
+  details.estr[open]>summary.rec{background:var(--verde-bg)}
+  .etapas{padding:14px 16px}
+  .etapa{display:flex;gap:12px;padding:12px 0;border-bottom:1px dashed var(--borda)}
+  .etapa:last-child{border-bottom:none}
+  .et-num{flex:0 0 28px;height:28px;border-radius:50%;background:var(--azul2);
+       color:#fff;display:flex;align-items:center;justify-content:center;
+       font-size:14px;font-weight:700}
+  .et-num.limp{background:#b23b3b}
+  .et-corpo{flex:1;min-width:0}
+  .et-tit{font-weight:600;font-size:14px;margin-bottom:2px}
+  .et-desc{font-size:13px;color:var(--cinza);margin-bottom:8px}
+  pre.sql{background:#1e2733;color:#e6edf3;border-radius:7px;padding:10px 12px;
+       font-family:Consolas,"Courier New",monospace;font-size:12.5px;line-height:1.5;
+       overflow-x:auto;margin:0 0 8px;white-space:pre-wrap;word-break:break-word}
+  pre.sql .cmt{color:#7fa7c7}
+  table.mini{width:auto;min-width:220px;margin:0 0 8px}
+  table.mini th,table.mini td{padding:4px 12px;font-size:13px}
+  table.mini th{background:#f0f3f8}
+  .statline{font-size:13px;background:var(--verde-bg);border:1px solid #bfe3cc;
+       border-radius:6px;padding:7px 10px;display:inline-block}
+  .statline b{color:var(--verde)}
+  .catbox{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .catnum{font-size:22px;font-weight:700;color:var(--azul)}
+  .plano{display:inline-block;background:#eef2f7;border:1px solid var(--borda);
+       border-radius:6px;padding:2px 10px;font-size:13px;font-weight:600;color:var(--azul)}
   @media print{
     header,.tabs,.card.controle,button,.spin{display:none!important}
     body{background:#fff}
     .card{border:none;padding:0}
     main{max-width:none}
+    details.estr{border:1px solid #ccc}
+    details.estr>summary{background:#f0f0f0}
+    pre.sql{background:#f4f4f4;color:#111;border:1px solid #ccc}
+    details.estr:not([open])>*:not(summary){display:block!important}
   }
 </style>
 </head>
@@ -107,8 +151,8 @@
       </div>
     </div>
     <div class="grid" style="margin-top:12px">
-      <div><label>Repeticoes de construcao</label><input id="reps_build" value="1"></div>
-      <div><label>Repeticoes de consulta</label><input id="reps_consulta" value="5"></div>
+      <div><label>Repeticoes de construcao</label><input id="reps_build" value="3"></div>
+      <div><label>Repeticoes de consulta</label><input id="reps_consulta" value="10"></div>
     </div>
   </div>
 
@@ -210,6 +254,76 @@ function parametros(){
   return p;
 }
 function fmt(v,suf){return v==null?"—":v.toLocaleString("pt-BR")+(suf||"")}
+function esc(s){return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function sqlFmt(s){
+  // realca comentarios -- ... apenas para leitura
+  return esc(s).replace(/(--[^\n]*)/g,'<span class="cmt">$1</span>');
+}
+function miniTabela(cab,vals,suf){
+  const linhas=vals.map((t,i)=>`<tr><td>#${i+1}</td><td>${fmt(t,suf)}</td></tr>`).join("");
+  return `<table class="mini"><thead><tr><th>${cab}</th><th>Tempo</th></tr></thead><tbody>${linhas}</tbody></table>`;
+}
+function passosBloco(c){
+  const p=c.passos||{};
+  const cr=p.criar||{};
+  const inviavel=c.situacao!="viavel";
+  // Etapa 1 - criar
+  let et1=`<div class="etapa"><div class="et-num">1</div><div class="et-corpo">
+    <div class="et-tit">Construcao do indice &mdash; ${cr.n||1}x (drop + create, tempo de parede)</div>
+    <div class="et-desc">O indice e removido e recriado ${cr.n||1} vez(es); cada criacao e cronometrada.</div>
+    <pre class="sql">${sqlFmt((cr.ddl||"")+";")}</pre>`;
+  if(inviavel){
+    et1+=`<div class="aviso" style="margin:0"><b>Inviavel:</b> ${esc(cr.erro||"o PostgreSQL recusou a criacao deste indice.")}
+      Registrado como inviavel, sem interromper as demais estrategias.</div></div></div>`;
+    return `<details class="estr"><summary>${c.nome} <span class="tag ruim">inviavel</span></summary>
+      <div class="etapas">${et1}</div></details>`;
+  }
+  et1+=miniTabela("Repeticao",cr.repeticoes_s||[]," s")+
+    `<div class="statline">Media = <b>${fmt(cr.media_s," s")}</b> &nbsp;&middot;&nbsp; desvio-padrao amostral (n&minus;1) = <b>${fmt(cr.desvio_s," s")}</b></div>
+    </div></div>`;
+  // Etapa 2 - catalogo / disco
+  const cat=p.catalogo||{};
+  const et2=`<div class="etapa"><div class="et-num">2</div><div class="et-corpo">
+    <div class="et-tit">Espaco em disco &mdash; lido do catalogo do PostgreSQL</div>
+    <div class="et-desc">O tamanho e lido diretamente do catalogo, sem estimativa.</div>
+    <pre class="sql">${sqlFmt(cat.sql||"")}</pre>
+    <div class="catbox"><span class="catnum">${cat.legivel||"—"}</span>
+      <span class="msg">= ${fmt(cat.bytes)} bytes &middot; equivalente a <code>${esc(cat.sql_legivel||"")}</code></span></div>
+    </div></div>`;
+  // Etapa 3 - consulta
+  const q=p.consulta||{};
+  const prep=(q.preparacao||[]).map(s=>s+";").join("\n");
+  const et3=`<div class="etapa"><div class="et-num">3</div><div class="et-corpo">
+    <div class="et-tit">Tempo de resposta da consulta &mdash; ${q.n||0}x, medido pelo servidor</div>
+    <div class="et-desc">A sessao e reiniciada e a varredura sequencial e desabilitada para forcar o indice.
+      Descarta-se ${q.aquecimento||0} execucao(oes) de aquecimento; as demais sao medidas pelo
+      <b>Execution Time</b> do EXPLAIN (ANALYZE).</div>
+    <pre class="sql">${sqlFmt(prep+"\n\n"+(q.explain||"")+";")}</pre>`+
+    miniTabela("Execucao",q.repeticoes_ms||[]," ms")+
+    `<div class="statline">Media = <b>${fmt(q.media_ms," ms")}</b> &nbsp;&middot;&nbsp; desvio-padrao amostral (n&minus;1) = <b>${fmt(q.desvio_ms," ms")}</b>
+      &nbsp;&middot;&nbsp; Plano observado: <span class="plano">${esc(q.plano||"—")}</span></div>
+    </div></div>`;
+  // Etapa 4 - excluir
+  const et4=`<div class="etapa"><div class="et-num limp">4</div><div class="et-corpo">
+    <div class="et-tit">Exclusao e limpeza</div>
+    <div class="et-desc">Ao final, o indice de teste e removido; nenhum objeto permanece na base.</div>
+    <pre class="sql">${sqlFmt((cr.drop_ddl||"")+";")}</pre>
+    </div></div>`;
+  const tag=c.recomendado?'<span class="tag">recomendado</span>':'';
+  return `<details class="estr" open><summary class="${c.recomendado?'rec':''}">${c.nome} ${tag}</summary>
+    <div class="etapas">${et1}${et2}${et3}${et4}</div></details>`;
+}
+function passosSecao(j){
+  if(!j.cenarios||!j.cenarios.length) return "";
+  return `<h3 class="secao">Passo a passo das medicoes</h3>
+    <p class="legenda">Para cada estrategia: construcao do indice (com cada repeticao), leitura do
+      catalogo (disco), medicao da consulta (com descarte de aquecimento) e limpeza.</p>
+    <div class="como"><b>Como lemos os numeros:</b> cada metrica e repetida; sobre as repeticoes
+      aplica-se a <b>media</b> e o <b>desvio-padrao amostral</b>, com divisao por <b>n&minus;1</b>
+      (as repeticoes sao uma amostra das execucoes possiveis). Nao ha cenario "sem indice": as
+      estrategias sao comparadas entre si, e a de menor tempo de consulta e sugerida em verde.</div>
+    ${j.cenarios.map(passosBloco).join("")}`;
+}
 function tabelaResultados(j){
   const linhas=j.cenarios.map(c=>{
     if(c.situacao!="viavel"){
@@ -238,6 +352,7 @@ function tabelaResultados(j){
     <table><thead><tr><th>Estrategia</th><th>Busca</th><th>Construcao</th>
       <th>Disco</th><th>Consulta</th><th>Plano</th></tr></thead><tbody>${linhas}</tbody></table>
     <div class="msg">Verde = indice recomendado. Os valores dependem do ambiente e constituem uma <b>sugestao</b>.</div>
+    ${passosSecao(j)}
     <button class="acao sec" onclick="baixarPdf()" style="margin-top:14px">Exportar relatorio em PDF</button>`;
 }
 async function avaliar(){
