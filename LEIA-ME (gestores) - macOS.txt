@@ -39,9 +39,9 @@ IMPORTANTE
 - A ferramenta CRIA e REMOVE indices no banco indicado. Aponte-a sempre para
   um banco de TESTES ou uma COPIA, nunca para o banco de producao.
 - Os resultados dependem do ambiente de medicao e constituem uma SUGESTAO.
-- Requisitos: macOS (Apple Silicon ou Intel, conforme a maquina onde o app
-  foi compilado) e acesso de rede ao servidor PostgreSQL. Nao e necessario
-  ter o PostgreSQL instalado nesta maquina.
+- Requisitos: macOS com Apple Silicon (arm64 - M1 ou mais recente) e acesso
+  de rede ao servidor PostgreSQL. Nao e necessario ter o PostgreSQL instalado
+  nesta maquina. Em Mac Intel, use a ALTERNATIVA SEM EXECUTAVEL abaixo.
 
 ALTERNATIVA SEM EXECUTAVEL (para quem tem Python)
 -------------------------------------------------

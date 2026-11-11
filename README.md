@@ -65,7 +65,7 @@ Para cada cenário, a ferramenta mede, como no protocolo da dissertação:
 2. **Tamanho em disco** — `pg_relation_size` sobre o índice criado.
 3. **Tempo de consulta** — a consulta é aquecida e executada `repeticoes_consulta` vezes (padrão 10) com `EXPLAIN (ANALYZE, BUFFERS)`, tomando o `Execution Time` do servidor; o plano de execução é capturado.
 
-Não há cenário *baseline* sem índice: as estratégias são comparadas **entre si**. Com `enable_seqscan=false`, a ferramenta executa `SET enable_seqscan = off` para forçar o uso do índice pretendido. Um cenário cujo índice não possa ser construído (ex.: trigrama GiST sobre textos longos) é registrado como **inviável**, sem interromper os demais.
+Não há cenário *baseline* sem índice: as estratégias são comparadas **entre si**. Com `enable_seqscan=false`, a ferramenta executa `SET enable_seqscan = off` para forçar o uso de índice. Além disso, os cenários FTS forçam o **plano específico** do método avaliado — GIN usa `SET enable_indexscan = off` (força *Bitmap Index Scan*) e GiST usa `SET enable_bitmapscan = off` (força *Index Scan*) — para que, havendo outro índice de texto na mesma coluna, o otimizador não meça o índice errado (correção de rastreabilidade documentada na dissertação). Um cenário cujo índice não possa ser construído (ex.: trigrama GiST sobre textos longos) é registrado como **inviável**, sem interromper os demais.
 
 ## O arquivo de configuração
 

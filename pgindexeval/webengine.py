@@ -162,16 +162,24 @@ def construir_cenarios(
         f"SELECT ctid FROM {t} WHERE {c} ILIKE '%{termo_sql}%' LIMIT 20"
     )
     defs = {
+        # Forcamento de plano por cenario (como em comandos_4_4.sql da
+        # dissertacao): sem isso, havendo outro indice de texto na coluna
+        # (ex.: um GiST pre-existente), o otimizador pode servir a consulta
+        # "GIN" por Index Scan do GiST, medindo o indice errado. GIN => Bitmap
+        # Index Scan (enable_indexscan=off); GiST => Index Scan
+        # (enable_bitmapscan=off).
         "fts_gin": config.Cenario(
             id="fts_gin", nome="FTS GIN", busca="Full-Text Search",
             indices=[config.Indice("pie_eval_fts_gin",
                      f"CREATE INDEX pie_eval_fts_gin ON {t} USING gin ({expr_fts})")],
-            consulta=consulta_fts),
+            consulta=consulta_fts,
+            preparacao=["SET enable_indexscan = off"]),
         "fts_gist": config.Cenario(
             id="fts_gist", nome="FTS GiST", busca="Full-Text Search",
             indices=[config.Indice("pie_eval_fts_gist",
                      f"CREATE INDEX pie_eval_fts_gist ON {t} USING gist ({expr_fts})")],
-            consulta=consulta_fts),
+            consulta=consulta_fts,
+            preparacao=["SET enable_bitmapscan = off"]),
         "trgm_gin": config.Cenario(
             id="trgm_gin", nome="Trigrama GIN", busca="Similaridade (ILIKE)",
             indices=[config.Indice("pie_eval_trgm_gin",
